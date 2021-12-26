@@ -1,7 +1,16 @@
+from flask import Flask, render_template
 import mysql.connector
-import urllib
 import requests
+import json
 
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return render_template('home.html')
+@app.route('/about')
+def about():
+    return 'About Page'
 def main():
     conn = mysql.connector.connect(host="localhost", username="DbMysql48", password="DbMysql48", database="DbMysql48",
                                    port=3305)
@@ -19,4 +28,5 @@ def main():
     
 
 
-main()
+if __name__ == '__main__':
+    app.run(debug=True)
