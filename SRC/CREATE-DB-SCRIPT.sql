@@ -34,3 +34,10 @@ CREATE TABLE IF NOT EXISTS movies_directors (
 	PRIMARY KEY (director_id),
 	PRIMARY KEY (movie_id)
 );
+
+CREATE TABLE IF NOT EXISTS movie_genre (
+	movie_id INT(11),
+	genre VARCHAR(100),
+	PRIMARY KEY (movie_id, genre)
+);
+
