@@ -3,9 +3,14 @@ import mysql.connector, requests
 
 
 
-def correct():
-    s = "mark van der sar"
-    print(s.split(" ", 1))
+def correct(keywords):
+    kw_string = """"""
+    for i, keyword in enumerate(keywords):
+        if i==len(keywords)-1:
+            kw_string += 'k.keyword = {}'.format(keyword)
+            break
+        kw_string = kw_string + "k.keyword = '{}' OR ".format(keyword)
+    return kw_string
 
 ## function that returns list of actors who acted in at least 4 categories and acted in a movie in the top 250
 
@@ -97,5 +102,5 @@ def insert_top250movies():
         print("INSERTED MOVIE #{}".format(i+1))
     mdb.commit()
     close_connection(mdb)
-
-correct()
+lst = ['mafia', 'christmas']
+print(correct(lst))

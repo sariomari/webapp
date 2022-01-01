@@ -1,5 +1,5 @@
 ############### Python file which inserts data into the DataBase ###############
-############### We used a public api to insert the table Top250Movies, and the rest of the data we got from the following source: ###############
+############### We used the public api tmdb to insert the table Top250Movies, and got the rest of the data from the following source: ###############
 ############### https://www.kaggle.com/rounakbanik/the-movies-dataset ###############
 import csv
 import mysql.connector, requests
@@ -55,7 +55,7 @@ def movies_with_two_actors(actor1, actor2):
     cursor.execute(id_query, (a2_fn, a2_ln))
     res = cursor.fetchone()
     if len(res) == 0:
-        print("Second actor not found in database, Please contact us")
+        print("Second actor not found in database, Please contact us.")
         exit(-1)
     actor2_id = res[0]
 
@@ -102,6 +102,67 @@ def best_actors_in_genre(genre, n):
         res.append(row)
     return res
 
+############ a function that returns a list of actors who have acted in at least n genres ############
+def versatile_actors(n):
+    res = []
+    mdb = connect_to_database()
+    cursor = mdb.cursor()
+    cursor.execute("""  SELECT res.first_name, res.last_name, res.cnt AS genre_count
+                        FROM (SELECT a.first_name, a.last_name, COUNT(DISTINCT g.id) AS cnt
+	                          FROM actors a
+                              JOIN movie_actor ma ON a.id = ma.actor_id
+                              JOIN movies m ON ma.movie_id = m.id
+                              JOIN movie_genre mg ON mg.movie_id = m.id
+                              JOIN genres g ON g.id = mg.genre_id 
+                              GROUP BY a.first_name, a.last_name) res
+                        WHERE res.cnt >= 5
+                        ORDER BY res.cnt DESC """)
+    rows = cursor.fetchall()
+    for row in rows:
+        res.append(row)
+    return res
+
+############ a function that returns a list of all actors who have acted in at least 2 of the top 250 movies (imdb) - ordered by number of movies ############
+def actors_in_top250movies():
+    res = []
+    mdb = connect_to_database()
+    cursor = mdb.cursor()
+    cursor.execute("""SELECT res.first_name, res.last_name, res.cnt AS numOfMovies
+                      FROM (SELECT a.first_name, a.last_name, COUNT(DISTINCT tm.id) AS cnt
+	                        FROM actors a
+                            JOIN movie_actor ma ON ma.actor_id = a.id
+                            JOIN top250movies tm ON tm.id = ma.movie_id
+                            GROUP BY a.first_name, a.last_name) res
+                      WHERE res.cnt >= 2
+                      ORDER BY res.cnt DESC;""")
+    rows = cursor.fetchall()
+    for row in rows:
+        res.append(row)
+    return res
+
+
+def best_movies_with_keyword(keywords):
+    kw_string = """"""
+    for i, keyword in enumerate(keywords):
+        if i==len(keywords)-1:
+            kw_string += "k.keyword = {}".format(keyword)
+            break
+        kw_string = kw_string + "k.keyword = {} OR ".format(keyword)
+    print(kw_string)
+    res = []
+    mdb = connect_to_database()
+    cursor = mdb.cursor()
+    cursor.execute("""SELECT m.name, m.ranking 
+FROM movies m 
+JOIN movie_keyword mk ON mk.movie_id = m.id 
+JOIN keywords k ON k.id = mk.keyword_id 
+WHERE %s
+ORDER BY m.ranking DESC;""", (kw_string))
+    rows = cursor.fetchall()
+    for row in rows:
+        res.append(row)
+    return res
+
 ########################------------MAIN PART-------------########################
 ######################## INSERTING DATA INTO THE DATABASE ########################
 
@@ -124,17 +185,18 @@ def insert_top250movies():
     mdb = connect_to_database()
     cursor = mdb.cursor()
     ## arguments for GET request
-    url = "https://imdb-api.com/en/API/Top250Movies/k_6tj9fsmd"
+    url = "https://api.themoviedb.org/3/list/634?api_key=c6017d35bc98fce7f99b8235c0d9241f&language=en-US"
     headers, payload = {}, {}
-
+    ## response object
     res = requests.request("GET", url=url, data=payload, headers=headers)
     ## a json object which contains the movies
     top250movies = res.json()["items"]
     ## inserting all the movies
     for i in range(len(top250movies)):
-        query = """INSERT INTO top250movies (imdb_id, ranking, title, `year`, imdbRating) VALUES (%s, %s, %s, %s, %s)"""
+        query = """INSERT INTO top250movies (id, ranking, title, `year`, rating) VALUES (%s, %s, %s, %s, %s)"""
         movie = top250movies[i]
-        cursor.execute(query, (movie["id"][2:], movie["rank"], movie["title"], movie["year"], movie["imDbRating"]))
+        year = movie["release_date"].split("-", 1)[0]
+        cursor.execute(query, (movie["id"], str(i+1), movie["title"], year, movie["vote_average"]))
         print("INSERTED MOVIE #{}".format(i+1))
     mdb.commit()
     close_connection(mdb)
@@ -226,17 +288,13 @@ def insert_movie_director():
             if i<1000:
                 i+=1
                 continue
-            director_name = crew_member["name"].split(" ")
+            director_name = crew_member["name"].split(" ", 1)
             director_first_name = director_name[0]
             director_last_name = ""
             if len(director_name) == 2:
                 director_last_name   = director_name[1]
             cursor.execute("""SELECT id FROM directors where first_name = %s AND last_name = %s""", (director_first_name, director_last_name))
             res = cursor.fetchone()
-            # if (res == None):
-            #     print(director_first_name, director_last_name)
-            #     close_connection(mdb)
-            #     return
             director_id = res[0]
             cursor.execute("""INSERT IGNORE INTO movie_director VALUES (%s, %s)""", (director_id, movie_id))
             i+=1
@@ -335,6 +393,8 @@ def add_foreign_keys():
                       """)
     cursor.execute("""ALTER TABLE movie_keyword ADD FOREIGN KEY (movie_id) REFERENCES movies(id),
                       ADD FOREIGN KEY (keyword_id) REFERENCES keywords(id);""")
+    cursor.execute("""ALTER TABLE top250movies 
+                      ADD FOREIGN KEY (id) REFERENCES movies(id);""")
     mdb.commit()
     print("SUCCESS")
     close_connection()
@@ -393,5 +453,4 @@ def connect_to_database():
 def close_connection(conn):
     conn.close()
 
-
-add_vote_count()
+print(best_movies_with_keyword(['mafia', 'christmas']))
