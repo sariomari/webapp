@@ -2,11 +2,32 @@
 ############### We used a public api to insert the table Top250Movies, and the rest of the data we got from the following source: ###############
 ############### https://www.kaggle.com/rounakbanik/the-movies-dataset ###############
 import csv
-from os import close
 import mysql.connector, requests
 import ast
 
 
+def add_vote_count():
+    file = open("/Users/sari/Downloads/movies_metadata.csv")
+    mdb = connect_to_database()
+    cursor = mdb.cursor()
+    csvreader = csv.reader(file)
+    next(csvreader)
+    i=0
+    for row in csvreader:
+        if len(row) < 23:
+            continue
+        movie_id = row[5]
+        vote_count = row[23]
+        cursor.execute("""UPDATE movies SET vote_count = %s WHERE id = %s""", (vote_count, movie_id))
+        i+=1
+        if i%1000==0:
+            print("Inserted {}".format(i))
+            mdb.commit()
+    mdb.commit()
+    close_connection(mdb)
+
+################################### QUERIES ###################################
+############ a function that given two names (actor1, actor2), returns a list of movies that both actors acted in (if there's any), otherwise exits ############
 def movies_with_two_actors(actor1, actor2):
     ## parsing actors first and last names (if they have a last name)
     a1 = actor1.split(" ")
@@ -20,7 +41,7 @@ def movies_with_two_actors(actor1, actor2):
     a2_fn = a2[0]
 
     ## connecting to database
-    mdb = connect_to_databse()
+    mdb = connect_to_database()
     cursor = mdb.cursor()
     ## getting the ids of our actors - if not found in database then we handle the error
     id_query = """SELECT id FROM actors WHERE first_name = %s
@@ -59,31 +80,48 @@ def movies_with_two_actors(actor1, actor2):
     return movie_list
 
 
+############ a function that given (genre, n) returns actors who acted in more than n movies with specified genre, in descending order ############
+############ simply explained - type in a genre and a number, and we'll give you the most experienced actors of this genre ############
+def best_actors_in_genre(genre, n):
+    res = []
+    mdb = connect_to_database()
+    cursor = mdb.cursor()
+    cursor.execute("""  SELECT res.first_name, res.last_name, res.cnt AS movie_count
+                        FROM (SELECT a.first_name, a.last_name, COUNT(DISTINCT m.name) AS cnt
+	                          FROM actors a
+	                          JOIN movie_actor ma ON a.id = ma.actor_id
+	                          JOIN movies m ON m.id = ma.movie_id 
+                              JOIN movie_genre mg ON mg.movie_id = ma.movie_id
+                              JOIN genres g ON g.id = mg.genre_id 
+                              WHERE g.genre = %s
+                              GROUP BY a.first_name, a.last_name) res
+                        WHERE res.cnt >= %s
+                        ORDER BY movie_count DESC """, (genre, str(n)))
+    rows = cursor.fetchall()
+    for row in rows:
+        res.append(row)
+    return res
+
+########################------------MAIN PART-------------########################
+######################## INSERTING DATA INTO THE DATABASE ########################
+
 def main():
-    # insert_movie_actor_director()
-    # insert_movies_genres()
-    # insert_keywords()
+    insert_top250movies()
+    insert_movies_genres()
+    add_genres()
+    insert_movie_actor()
+    insert_directors()
+    insert_movie_director()
+    insert_keywords()
+    change_primary_key("directors", "id")
     add_foreign_keys()
 
 
 
-############ function that connects to our MySQL database, returns the connection object ############
-def connect_to_databse():
-    conn = mysql.connector.connect(host="localhost", username="DbMysql48", password="DbMysql48", database="DbMysql48", port=3305)
-    if conn.is_connected():
-        print("Successfully Connected")
-        return conn
-    print("Connection Failed")
-    exit(-1)
-
-############ function that closes the SQL connection for the given connection object ############
-def close_connection(conn):
-    conn.close()
-
 ############ calling public api to insert top 250 movies to database ############
 def insert_top250movies():
     ## connecting to database
-    mdb = connect_to_databse()
+    mdb = connect_to_database()
     cursor = mdb.cursor()
     ## arguments for GET request
     url = "https://imdb-api.com/en/API/Top250Movies/k_6tj9fsmd"
@@ -105,7 +143,7 @@ def insert_top250movies():
 ## using credits.csv from k file to insert data into the following tables: actors, movie_actor, directors, movies_directors
 def insert_movie_actor():
     file = open("/Users/sari/Downloads/credits.csv")
-    mdb = connect_to_databse()
+    mdb = connect_to_database()
     cursor = mdb.cursor()
     csvreader = csv.reader(file)
     ## the first row is the column names
@@ -141,7 +179,7 @@ def insert_movie_actor():
 ## (first_name, last_name) as the primary key, then for each director we give an auto-increment id (which will also be unique)
 def insert_directors():
     file = open("/Users/sari/Downloads/credits.csv")
-    mdb = connect_to_databse()
+    mdb = connect_to_database()
     cursor = mdb.cursor()
     csvreader = csv.reader(file)
     ## the first row is the column names
@@ -166,31 +204,6 @@ def insert_directors():
     mdb.commit()
     close_connection(mdb)
 
-def add_last_names():
-    file = open("/Users/sari/Downloads/credits.csv")
-    mdb = connect_to_databse()
-    cursor = mdb.cursor()
-    csvreader = csv.reader(file)
-    ## the first row is the column names
-    next(csvreader)
-    i=0
-    id = 1
-    for row in csvreader:
-        crew = ast.literal_eval(row[1])
-        for crew_member in crew:
-            if i==988:
-                print("DONE!")
-                mdb.commit()
-                close_connection(mdb)
-                return
-            if crew_member["job"] != "Director":
-                continue
-            if len(crew_member["name"].split(" ")) <= 2:
-                continue
-            director_name = crew_member["name"].split(" ", 1)
-            cursor.execute("""UPDATE directors SET last_name = %s WHERE first_name = %s AND last_name = "" """, (director_name[1], director_name[0]))
-            i+=1
-
             
 
 ## function that inserts to the movie_director table - we use the director id (which we created) for a given director ##
@@ -198,7 +211,7 @@ def add_last_names():
 ## later, we will make the id column in directors table the primary key ##
 def insert_movie_director():
     file = open("/Users/sari/Downloads/credits.csv")
-    mdb = connect_to_databse()
+    mdb = connect_to_database()
     cursor = mdb.cursor()
     csvreader = csv.reader(file)
     ## the first row is the column names
@@ -237,26 +250,25 @@ def insert_movie_director():
 
 ############ function that proccesses data from movies_metadata.csv and inserts suitable data intto tables: movie, movie_genre ############
 def insert_movies_genres():
-    file = open("/Users/sari/Desktop/mmd.csv")
-    mdb = connect_to_databse()
+    file = open("/Users/sari/Downloads/movies_metadata.csv")
+    mdb = connect_to_database()
     cursor = mdb.cursor()
     csvreader = csv.reader(file)
     next(csvreader)
     i=0
     for row in csvreader:
-        if len(row) < 23:
-            continue
         genres = ast.literal_eval(row[3])
         movie_id = row[5]
         year = row[14].split("-")[0] if row[14] != "" else None
         title = row[20]
         rating = row[22] if row[22] != "" else None
+        vote_count = row[23]
         for genre in genres:
             genre_id = genre["id"]
             cursor.execute("""INSERT IGNORE INTO movie_genre VALUES (%s, %s)""", (movie_id, genre_id))
             mdb.commit()
             i+=1
-        cursor.execute("""INSERT IGNORE INTO movies VALUES (%s, %s, %s, %s)""", (movie_id, title, year, rating))
+        cursor.execute("""INSERT IGNORE INTO movies VALUES (%s, %s, %s, %s, %s)""", (movie_id, title, year, rating, vote_count))
         mdb.commit()
         i+=1
         if i%500 == 0:
@@ -268,7 +280,7 @@ def insert_movies_genres():
 ############ function that proccesses data from keywords.csv and inserts suitable data into tables keywords, movie_keyword ############
 def insert_keywords():
     file = open("/Users/sari/Downloads/keywords.csv")
-    mdb = connect_to_databse()
+    mdb = connect_to_database()
     cursor = mdb.cursor()
     csvreader = csv.reader(file)
     next(csvreader)
@@ -292,7 +304,7 @@ def insert_keywords():
 def add_genres():
     gset = set()
     file = open("/Users/sari/Downloads/movies_metadata.csv")
-    mdb = connect_to_databse()
+    mdb = connect_to_database()
     cursor = mdb.cursor()
     csvreader = csv.reader(file)
     next(csvreader)
@@ -310,7 +322,7 @@ def add_genres():
 
 ############ a function that adds suitable foreign keys after we inserted the data to all the tables ############
 def add_foreign_keys():
-    mdb = connect_to_databse()
+    mdb = connect_to_database()
     cursor = mdb.cursor()
     cursor.execute("""ALTER TABLE movie_actor ADD FOREIGN KEY (actor_id) REFERENCES actors(id),
                       ADD FOREIGN KEY (movie_id) REFERENCES movies(id);
@@ -327,10 +339,21 @@ def add_foreign_keys():
     print("SUCCESS")
     close_connection()
 
+############ a function that given arguments (table, new_key), makes new_key the new primary key for table ############
+def change_primary_key(table, new_key):
+    mdb = connect_to_database()
+    cursor = mdb.cursor()
+    ## dropping current primary key
+    cursor.execute("""ALTER TABLE %s DROP PRIMARY KEY;""", (table))
+    ## making new_key as the new primary_key - IT SHOULD BE UNIQUE!
+    cursor.execute("""ALTER TABLE %s ADD PRIMARY KEY (%s)""", (new_key))
+    mdb.commit()
+    close_connection()
+    return
 
 
 
-############ function that returns how many genres we have (the result is 20) ############
+############ helper function that returns how many genres we have (the result is 20) ############
 def num_of_genres():
     genreset = set()
     file = open("/Users/sari/Downloads/movies_metadata.csv")
@@ -355,4 +378,20 @@ def num_of_genres():
     return len(genreset)
 
 
-add_last_names()
+
+############--------------- CONNECTING TO DATABASE ---------------###############
+############ function that connects to our MySQL database, returns the connection object ############
+def connect_to_database():
+    conn = mysql.connector.connect(host="localhost", username="DbMysql48", password="DbMysql48", database="DbMysql48", port=3305)
+    if conn.is_connected():
+        print("Successfully Connected")
+        return conn
+    print("Connection Failed")
+    exit(-1)
+
+############ function that closes the SQL connection for the given connection object ############
+def close_connection(conn):
+    conn.close()
+
+
+add_vote_count()
