@@ -3,9 +3,10 @@
 ############### https://www.kaggle.com/rounakbanik/the-movies-dataset ###############
 import csv
 import mysql.connector, requests
+from mysql.connector.pooling import CNX_POOL_NAMEREGEX
 import ast
 
-
+## i forgot to add column vote_count to movies, this function adds it - not for submission
 def add_vote_count():
     file = open("/Users/sari/Downloads/movies_metadata.csv")
     mdb = connect_to_database()
@@ -48,15 +49,15 @@ def movies_with_two_actors(actor1, actor2):
                         AND last_name = %s"""
     cursor.execute(id_query, (a1_fn, a1_ln))
     res = cursor.fetchone()
-    if len(res) == 0:
+    if not res:
         print("First actor not found in database, Please contact us.")
-        exit(-1)
+        return
     actor1_id = res[0]
     cursor.execute(id_query, (a2_fn, a2_ln))
     res = cursor.fetchone()
-    if len(res) == 0:
+    if not res:
         print("Second actor not found in database, Please contact us.")
-        exit(-1)
+        return
     actor2_id = res[0]
 
     ## we now execute the main query and return the result if its non-empty
@@ -140,29 +141,70 @@ def actors_in_top250movies():
         res.append(row)
     return res
 
-
+############ given a list of keywords, this function returns the best movies based on these keywords ############
 def best_movies_with_keyword(keywords):
     kw_string = """"""
     for i, keyword in enumerate(keywords):
         if i==len(keywords)-1:
-            kw_string += "k.keyword = {}".format(keyword)
+            kw_string += "k.keyword = '{}'".format(keyword)
             break
-        kw_string = kw_string + "k.keyword = {} OR ".format(keyword)
+        kw_string = kw_string + "k.keyword = '{}' OR ".format(keyword)
     print(kw_string)
     res = []
     mdb = connect_to_database()
     cursor = mdb.cursor()
     cursor.execute("""SELECT m.name, m.ranking 
-FROM movies m 
-JOIN movie_keyword mk ON mk.movie_id = m.id 
-JOIN keywords k ON k.id = mk.keyword_id 
-WHERE %s
-ORDER BY m.ranking DESC;""", (kw_string))
+                      FROM movies m 
+                      JOIN movie_keyword mk ON mk.movie_id = m.id 
+                      JOIN keywords k ON k.id = mk.keyword_id 
+                      WHERE {}
+                      ORDER BY m.ranking DESC;""".format(kw_string))
     rows = cursor.fetchall()
     for row in rows:
         res.append(row)
     return res
 
+############ given a director name, this function returns a list actors who have have been cast the most in the given director's movies ############
+def director_favorite_actors(director_name):
+    res = []
+    fullname = director_name.split(" ", 1)
+    director_fn = fullname[0]
+    director_ln = ""
+    if len(fullname) == 2:
+        director_ln = fullname[1]
+    mdb = connect_to_database()
+    cursor = mdb.cursor()
+    cursor.execute("""SELECT a.first_name, a.last_name, COUNT(*) as numOfMovies
+                      FROM actors a
+                      JOIN movie_actor ma ON a.id = ma.actor_id
+                      JOIN movie_director md ON md.movie_id = ma.movie_id 
+                      JOIN directors d ON d.id = md.director_id 
+                      WHERE d.first_name = %s AND d.last_name = %s
+                      GROUP BY a.first_name, a.last_name
+                      ORDER BY numOfMovies DESC;""", (director_fn, director_ln))
+    rows = cursor.fetchall()
+    for row in rows:
+        res.append(row)
+    if len(res) == 0:
+        print("No such director in our database.")
+        return
+    return res
+
+############ as the name says, this function returns a list of the best movies for each year who have a vote count more than 1000 (so we filter unknown movies) ############
+def best_movie_each_year():
+    res = []
+    mdb = connect_to_database()
+    cursor = mdb.cursor()
+    cursor.execute("""SELECT res.name, res.`year`
+                      FROM (SELECT m.name, m.`year` , RANK() OVER (PARTITION BY m.`year` ORDER BY m.ranking DESC, m.vote_count) AS rk
+                      FROM movies m 
+                      WHERE m.vote_count >= 1000) res
+                      WHERE res.rk = 1
+                      ORDER BY res.`year` DESC;""")
+    rows = cursor.fetchall()
+    for row in rows:
+        res.append(row)
+    return res
 ########################------------MAIN PART-------------########################
 ######################## INSERTING DATA INTO THE DATABASE ########################
 
@@ -453,4 +495,4 @@ def connect_to_database():
 def close_connection(conn):
     conn.close()
 
-print(best_movies_with_keyword(['mafia', 'christmas']))
+print(best_movie_each_year())
