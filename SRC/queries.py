@@ -7,7 +7,7 @@ def correct(keywords):
     kw_string = """"""
     for i, keyword in enumerate(keywords):
         if i==len(keywords)-1:
-            kw_string += 'k.keyword = {}'.format(keyword)
+            kw_string += "k.keyword = '{}'".format(keyword)
             break
         kw_string = kw_string + "k.keyword = '{}' OR ".format(keyword)
     return kw_string

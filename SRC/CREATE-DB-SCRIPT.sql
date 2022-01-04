@@ -70,10 +70,10 @@ CREATE TABLE IF NOT EXISTS movie_keyword (
 );
 
 CREATE TABLE IF NOT EXISTS top250movies (
-	imdb_id INT(11) NOT NULL,
+	id INT(11) NOT NULL,
 	ranking INT(11),
 	title VARCHAR(100) NOT NULL,
 	year INT(11) NOT NULL,
-	imdbRating INT(11),
+	rating INT(11),
 	PRIMARY KEY (ranking)
 );

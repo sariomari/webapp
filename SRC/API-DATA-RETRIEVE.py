@@ -94,7 +94,7 @@ def best_actors_in_genre(genre, n):
 	                          JOIN movies m ON m.id = ma.movie_id 
                               JOIN movie_genre mg ON mg.movie_id = ma.movie_id
                               JOIN genres g ON g.id = mg.genre_id 
-                              WHERE g.genre = %s
+                              WHERE g.genre = %s AND m.vote_count >= 800
                               GROUP BY a.first_name, a.last_name) res
                         WHERE res.cnt >= %s
                         ORDER BY movie_count DESC """, (genre, str(n)))
@@ -116,8 +116,8 @@ def versatile_actors(n):
                               JOIN movie_genre mg ON mg.movie_id = m.id
                               JOIN genres g ON g.id = mg.genre_id 
                               GROUP BY a.first_name, a.last_name) res
-                        WHERE res.cnt >= 5
-                        ORDER BY res.cnt DESC """)
+                        WHERE res.cnt >= %s
+                        ORDER BY res.cnt DESC """, (n))
     rows = cursor.fetchall()
     for row in rows:
         res.append(row)
@@ -142,7 +142,7 @@ def actors_in_top250movies():
     return res
 
 ############ given a list of keywords, this function returns the best movies based on these keywords ############
-def best_movies_with_keyword(keywords):
+def best_movies_with_keywords(keywords):
     kw_string = """"""
     for i, keyword in enumerate(keywords):
         if i==len(keywords)-1:
@@ -157,7 +157,8 @@ def best_movies_with_keyword(keywords):
                       FROM movies m 
                       JOIN movie_keyword mk ON mk.movie_id = m.id 
                       JOIN keywords k ON k.id = mk.keyword_id 
-                      WHERE {}
+                      WHERE m.vote_count >= 500
+                        AND {}
                       ORDER BY m.ranking DESC;""".format(kw_string))
     rows = cursor.fetchall()
     for row in rows:
@@ -327,9 +328,6 @@ def insert_movie_director():
         for crew_member in crew:
             if crew_member["job"] != "Director":
                 continue
-            if i<1000:
-                i+=1
-                continue
             director_name = crew_member["name"].split(" ", 1)
             director_first_name = director_name[0]
             director_last_name = ""
@@ -495,4 +493,4 @@ def connect_to_database():
 def close_connection(conn):
     conn.close()
 
-print(best_movie_each_year())
+print(best_movies_with_keywords(['mafia', 'christmas']))
